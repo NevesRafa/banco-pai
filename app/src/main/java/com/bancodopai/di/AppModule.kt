@@ -1,12 +1,16 @@
 package com.bancodopai.di
 
+import com.bancodopai.auth.ui.viewmodel.AuthViewModel
+import com.bancodopai.child.ui.viewmodel.ChildHomeViewModel
 import com.bancodopai.data.remote.FirebaseFinanceRepository
 import com.bancodopai.domain.repository.FinanceRepository
+import com.bancodopai.parent.ui.viewmodel.ParentHomeViewModel
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import org.koin.core.module.dsl.viewModel
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
@@ -30,4 +34,9 @@ val appModule = module {
             ioDispatcher = get<CoroutineDispatcher>(IoDispatcher)
         )
     }
+
+    // ─────────── ViewModels (MVI) ───────────
+    viewModel { AuthViewModel(get()) }
+    viewModel { ChildHomeViewModel(get()) }
+    viewModel { ParentHomeViewModel(get()) }
 }

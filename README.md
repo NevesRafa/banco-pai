@@ -6,7 +6,7 @@ O pai é o "Banco" e o filho é o "Cliente".
 ## Stack
 
 - Kotlin + Jetpack Compose (Material 3)
-- MVI com `StateFlow` + `SharedFlow` (Partes 2 e 3)
+- MVI com `StateFlow` + `SharedFlow`
 - Koin
 - Firebase Auth (e-mail/senha) + Firestore
 - Coroutines + Flow
@@ -14,10 +14,10 @@ O pai é o "Banco" e o filho é o "Cliente".
 ## Status
 
 - [x] Parte 1 — camada de dados, Firebase e Koin
-- [ ] Parte 2 — ViewModels em MVI
+- [x] Parte 2 — ViewModels em MVI
 - [ ] Parte 3 — UI Compose (login, home do filho, home do pai)
 
-A `MainActivity` atual é apenas uma tela de confirmação da Parte 1.
+A `MainActivity` atual é apenas uma tela de confirmação. A UI real entra na Parte 3.
 
 ## Configuração do Firebase
 
@@ -84,12 +84,24 @@ No Windows:
 .\gradlew.bat assembleDebug
 ```
 
-## Estrutura da Parte 1
+## Estrutura
 
 ```text
 com.bancodopai/
+├── auth/
+│   ├── mvi/action/AuthAction.kt
+│   ├── mvi/effect/AuthEffect.kt
+│   ├── mvi/state/AuthState.kt
+│   └── ui/viewmodel/AuthViewModel.kt
+├── child/
+│   ├── mvi/action/ChildHomeAction.kt
+│   ├── mvi/effect/ChildHomeEffect.kt
+│   ├── mvi/state/ChildHomeState.kt
+│   └── ui/viewmodel/ChildHomeViewModel.kt
 ├── core/
 │   ├── FirebaseResult.kt
+│   ├── Money.kt
+│   ├── mvi/MviViewModel.kt
 │   └── ui/theme/Theme.kt
 ├── data/remote/
 │   ├── FirestoreContract.kt
@@ -99,11 +111,25 @@ com.bancodopai/
 │   └── AppModule.kt
 ├── domain/model/
 │   ├── AppError.kt
+│   ├── DepositReason.kt
 │   ├── Transaction.kt
 │   └── User.kt
-└── domain/repository/
-    └── FinanceRepository.kt
+├── domain/repository/
+│   └── FinanceRepository.kt
+└── parent/
+    ├── mvi/action/ParentHomeAction.kt
+    ├── mvi/effect/ParentHomeEffect.kt
+    ├── mvi/state/ParentHomeState.kt
+    └── ui/viewmodel/ParentHomeViewModel.kt
 ```
+
+## MVI da Parte 2
+
+- `MviViewModel<S, A, E>` concentra `state`, `effect`, `updateState` e `emitEffect`.
+- `AuthViewModel` observa a sessão do Firebase, faz login/logout e emite navegação por role.
+- `ChildHomeViewModel` combina perfil e transações, calcula rendimento dos últimos 7 dias e envia pedidos de saque.
+- `ParentHomeViewModel` observa o filho, lista pendências, deposita, aprova e nega saques.
+- A UI não altera estado diretamente: envia `Action` e coleta `StateFlow`/`SharedFlow`.
 
 ## Observações
 
