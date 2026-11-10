@@ -15,9 +15,9 @@ O pai é o "Banco" e o filho é o "Cliente".
 
 - [x] Parte 1 — camada de dados, Firebase e Koin
 - [x] Parte 2 — ViewModels em MVI
-- [ ] Parte 3 — UI Compose (login, home do filho, home do pai)
+- [x] Parte 3 — UI Compose (login, home do filho, home do pai)
 
-A `MainActivity` atual é apenas uma tela de confirmação. A UI real entra na Parte 3.
+O app abre na tela de login e, após autenticar, navega para a home do filho ou a torre de controle do pai conforme o `role` do usuário.
 
 ## Configuração do Firebase
 
@@ -88,21 +88,29 @@ No Windows:
 
 ```text
 com.bancodopai/
+├── MainActivity.kt
 ├── auth/
 │   ├── mvi/action/AuthAction.kt
 │   ├── mvi/effect/AuthEffect.kt
 │   ├── mvi/state/AuthState.kt
+│   ├── ui/screen/LoginScreen.kt
 │   └── ui/viewmodel/AuthViewModel.kt
 ├── child/
 │   ├── mvi/action/ChildHomeAction.kt
 │   ├── mvi/effect/ChildHomeEffect.kt
 │   ├── mvi/state/ChildHomeState.kt
+│   ├── ui/screen/ChildHomeScreen.kt
 │   └── ui/viewmodel/ChildHomeViewModel.kt
 ├── core/
+│   ├── DateUtil.kt
 │   ├── FirebaseResult.kt
 │   ├── Money.kt
 │   ├── mvi/MviViewModel.kt
-│   └── ui/theme/Theme.kt
+│   └── ui/
+│       ├── components/
+│       │   ├── MoneyField.kt
+│       │   └── TransactionRow.kt
+│       └── theme/Theme.kt
 ├── data/remote/
 │   ├── FirestoreContract.kt
 │   ├── FirestoreMappers.kt
@@ -116,12 +124,23 @@ com.bancodopai/
 │   └── User.kt
 ├── domain/repository/
 │   └── FinanceRepository.kt
+├── navigation/
+│   └── AppNavigation.kt
 └── parent/
     ├── mvi/action/ParentHomeAction.kt
     ├── mvi/effect/ParentHomeEffect.kt
     ├── mvi/state/ParentHomeState.kt
+    ├── ui/screen/ParentHomeScreen.kt
     └── ui/viewmodel/ParentHomeViewModel.kt
 ```
+
+## UI da Parte 3
+
+- `AppNavigation` observa a sessão, mostra um splash durante a checagem e roteia por `role`.
+- `LoginScreen` usa tema escuro neutro, validação e feedback de erro por snackbar.
+- `ChildHomeScreen` usa tema neon escuro: saldo, rendimento semanal, meta com progresso e botão "Usar dinheiro" que abre um `ModalBottomSheet` de pedido de saque.
+- `ParentHomeScreen` usa tema grafite sóbrio: patrimônio administrado, lista de pendências com aprovar/negar e FAB que abre o sheet de depósito com `FilterChips` (Mesada, Tarefa, Presente, Outros).
+- `MoneyField` e `TransactionRow` são componentes compartilhados entre as telas.
 
 ## MVI da Parte 2
 

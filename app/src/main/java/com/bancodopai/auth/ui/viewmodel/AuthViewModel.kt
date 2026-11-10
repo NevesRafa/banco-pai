@@ -88,7 +88,10 @@ class AuthViewModel(
 
     private suspend fun navigateIfNeeded(user: User?) {
         if (user == null) {
-            lastNavigatedUid = null
+            if (lastNavigatedUid != null) {
+                lastNavigatedUid = null
+                emitEffect(AuthEffect.NavigateToLogin)
+            }
             return
         }
 
@@ -137,6 +140,7 @@ class AuthViewModel(
                     updateState {
                         AuthState(isCheckingSession = false)
                     }
+                    emitEffect(AuthEffect.NavigateToLogin)
                 }
                 .onFailure { error ->
                     updateState {
