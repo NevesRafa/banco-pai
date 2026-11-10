@@ -17,8 +17,11 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
+      // Para queries (list), a condição precisa ser provável a partir dos
+      // filtros da própria query. Por isso comparamos direto com parentId.
       allow read: if isSignedIn()
-        && (request.auth.uid == userId || isParentOf(userId));
+        && (request.auth.uid == userId
+            || resource.data.parentId == request.auth.uid);
 
       // Neste MVP as contas são criadas no Console/Admin SDK.
       allow create, delete: if false;
@@ -39,27 +42,34 @@ service cloud.firestore {
     }
 
     match /transactions/{transactionId} {
+      // childId/parentId permitem que as queries do app sejam validadas
+      // sem depender de get() em operações de list.
       allow read: if isSignedIn()
         && (resource.data.childId == request.auth.uid
-            || isParentOf(resource.data.childId));
+            || resource.data.parentId == request.auth.uid);
 
       allow create: if isSignedIn() && (
         // Filho cria somente pedido pendente de saque.
         (request.resource.data.childId == request.auth.uid
+          && request.resource.data.parentId
+               == userDoc(request.auth.uid).parentId
           && request.resource.data.type == 'WITHDRAW'
           && request.resource.data.status == 'PENDING'
           && request.resource.data.amountCents is int
           && request.resource.data.amountCents > 0)
         ||
-        // Pai cria depósito/rendimento já aprovado.
-        (isParentOf(request.resource.data.childId)
+        // Pai cria depósito/rendimento já aprovado para o próprio filho.
+        (userDoc(request.resource.data.childId).parentId
+               == request.auth.uid
+          && request.resource.data.parentId == request.auth.uid
           && request.resource.data.status == 'APPROVED'
           && request.resource.data.type in ['DEPOSIT', 'INTEREST']
           && request.resource.data.amountCents is int
           && request.resource.data.amountCents > 0)
       );
 
-      allow update: if isParentOf(resource.data.childId)
+      allow update: if isSignedIn()
+        && resource.data.parentId == request.auth.uid
         && resource.data.status == 'PENDING'
         && request.resource.data.status in ['APPROVED', 'DENIED']
         && request.resource.data.diff(resource.data)

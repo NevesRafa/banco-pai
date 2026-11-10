@@ -84,7 +84,10 @@ class ParentHomeViewModel(
                                     if (child == null) {
                                         flowOf(ParentData(parent, null, emptyList()))
                                     } else {
-                                        repository.observeTransactions(child.uid)
+                                        repository.observeTransactions(
+                                            childId = child.uid,
+                                            parentId = parent.uid
+                                        )
                                             .map { transactions ->
                                                 ParentData(parent, child, transactions)
                                             }

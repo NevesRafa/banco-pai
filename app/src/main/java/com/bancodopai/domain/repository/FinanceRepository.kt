@@ -18,9 +18,15 @@ interface FinanceRepository {
 
     fun observeChildOfParent(parentId: String): Flow<User?>
 
-    fun observeTransactions(childId: String): Flow<List<Transaction>>
+    fun observeTransactions(
+        childId: String,
+        parentId: String? = null
+    ): Flow<List<Transaction>>
 
-    fun observePendingWithdrawals(childId: String): Flow<List<Transaction>>
+    fun observePendingWithdrawals(
+        childId: String,
+        parentId: String? = null
+    ): Flow<List<Transaction>>
 
     suspend fun deposit(
         childId: String,

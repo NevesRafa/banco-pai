@@ -48,10 +48,26 @@ O projeto `bancopai` já vem com duas contas de teste e documentos semeados no F
 | Pai | `pai@bancopai.app` | `BancoPai123!` |
 | Filho | `filho@bancopai.app` | `BancoPai123!` |
 
-O filho começa com R$ 50,00, meta de R$ 200,00 e um pedido de saque pendente de R$ 20,00.
+A semeadura inicial cria o filho com R$ 50,00, meta de R$ 200,00 e um pedido de saque pendente de R$ 20,00.
+Como os testes de execução aprovam depósitos e saques, o saldo e o histórico atuais podem variar.
 
 Para recriar manualmente, crie os usuários em **Authentication** e os documentos correspondentes em `users`.
 O ID do documento deve ser o UID do usuário.
+
+Cada transação em `transactions` guarda `childId` (dono do dinheiro) e `parentId` (pai responsável).
+Isso permite que as queries de pai e filho sejam autorizadas pelas regras do Firestore sem depender de `get()` durante um `list`:
+
+```json
+{
+  "childId": "UID_DO_FILHO",
+  "parentId": "UID_DO_PAI",
+  "type": "WITHDRAW",
+  "amountCents": 2000,
+  "description": "Comprar figurinhas",
+  "status": "PENDING",
+  "timestamp": "2026-11-10T12:00:00Z"
+}
+```
 
 Pai:
 
@@ -166,3 +182,5 @@ com.bancodopai/
 - O `google-services.json` real fica fora do Git; sem ele, o login falha com uma mensagem de Firebase não configurado.
 - O `timestamp` retornado por `deposit`/`requestWithdrawal` é aproximado (`Instant.now()`). O valor canônico vem do `serverTimestamp()` pelo Flow.
 - A ordenação das transações é feita no cliente para evitar índice composto nesta fase.
+- Saques pendentes aparecem apenas na seção de pendências; o histórico lista só as transações já aprovadas/negadas.
+- As listas usam chaves com prefixo (`pending_` / `transaction_`) para evitar colisão de ID quando a mesma transação aparece em duas seções.

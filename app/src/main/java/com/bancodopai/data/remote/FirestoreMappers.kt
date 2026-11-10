@@ -58,14 +58,17 @@ internal fun DocumentSnapshot.toTransaction(): Transaction? {
 internal fun DocumentSnapshot.longOrZero(field: String): Long =
     (get(field) as? Number)?.toLong() ?: 0L
 
-internal fun Transaction.toDocument(): Map<String, Any> = mapOf(
-    FirestoreContract.CHILD_ID to childId,
-    FirestoreContract.TYPE to type.name,
-    FirestoreContract.AMOUNT_CENTS to amountCents,
-    FirestoreContract.DESCRIPTION to description,
-    FirestoreContract.STATUS to status.name,
-    FirestoreContract.TIMESTAMP to FieldValue.serverTimestamp()
-)
+internal fun Transaction.toDocument(
+    parentId: String? = null
+): Map<String, Any> = buildMap {
+    put(FirestoreContract.CHILD_ID, childId)
+    put(FirestoreContract.TYPE, type.name)
+    put(FirestoreContract.AMOUNT_CENTS, amountCents)
+    put(FirestoreContract.DESCRIPTION, description)
+    put(FirestoreContract.STATUS, status.name)
+    put(FirestoreContract.TIMESTAMP, FieldValue.serverTimestamp())
+    parentId?.let { put(FirestoreContract.PARENT_ID, it) }
+}
 
 private inline fun <reified T : Enum<T>> String?.toEnumOrNull(): T? {
     val raw = this ?: return null

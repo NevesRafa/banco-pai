@@ -110,29 +110,41 @@ class FirebaseFinanceRepository(
         awaitClose { registration.remove() }
     }.distinctUntilChanged()
 
-    override fun observeTransactions(childId: String): Flow<List<Transaction>> =
-        callbackFlow {
-            val registration = transactions
-                .whereEqualTo(FirestoreContract.CHILD_ID, childId)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        close(error.toAppError())
-                        return@addSnapshotListener
-                    }
+    override fun observeTransactions(
+        childId: String,
+        parentId: String?
+    ): Flow<List<Transaction>> = callbackFlow {
+        // A regra do Firestore precisa que a query filtre por um campo
+        // diretamente comparável ao UID (childId ou parentId).
+        val query = if (parentId == null) {
+            transactions.whereEqualTo(FirestoreContract.CHILD_ID, childId)
+        } else {
+            transactions.whereEqualTo(FirestoreContract.PARENT_ID, parentId)
+        }
 
-                    val items = snapshot?.documents
-                        ?.mapNotNull { it.toTransaction() }
-                        ?.sortedByDescending { it.timestamp }
-                        .orEmpty()
-
-                    trySend(items)
+        val registration = query
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error.toAppError())
+                    return@addSnapshotListener
                 }
 
-            awaitClose { registration.remove() }
-        }.distinctUntilChanged()
+                val items = snapshot?.documents
+                    ?.mapNotNull { it.toTransaction() }
+                    ?.sortedByDescending { it.timestamp }
+                    .orEmpty()
 
-    override fun observePendingWithdrawals(childId: String): Flow<List<Transaction>> =
-        observeTransactions(childId)
+                trySend(items)
+            }
+
+        awaitClose { registration.remove() }
+    }.distinctUntilChanged()
+
+    override fun observePendingWithdrawals(
+        childId: String,
+        parentId: String?
+    ): Flow<List<Transaction>> =
+        observeTransactions(childId, parentId)
             .map { list ->
                 list.filter {
                     it.type == TransactionType.WITHDRAW &&
@@ -194,7 +206,9 @@ class FirebaseFinanceRepository(
 
                 firestoreTransaction.set(
                     transactionRef,
-                    newTransaction.toDocument()
+                    newTransaction.toDocument(
+                        childSnapshot.getString(FirestoreContract.PARENT_ID)
+                    )
                 )
                 firestoreTransaction.update(
                     childRef,
@@ -244,7 +258,9 @@ class FirebaseFinanceRepository(
 
                 firestoreTransaction.set(
                     transactionRef,
-                    request.toDocument()
+                    request.toDocument(
+                        childSnapshot.getString(FirestoreContract.PARENT_ID)
+                    )
                 )
                 Unit
             }.await()

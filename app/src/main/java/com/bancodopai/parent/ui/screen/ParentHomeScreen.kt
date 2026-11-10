@@ -87,6 +87,8 @@ fun ParentHomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val pendingIds = state.pendingWithdrawals.map { it.id }.toSet()
+    val history = state.transactions.filterNot { it.id in pendingIds }.take(6)
 
     ParentTheme {
         LaunchedEffect(viewModel) {
@@ -198,7 +200,7 @@ fun ParentHomeScreen(
                     } else {
                         items(
                             items = state.pendingWithdrawals,
-                            key = { it.id }
+                            key = { "pending_${it.id}" }
                         ) { transaction ->
                             PendingWithdrawalCard(
                                 transaction = transaction,
@@ -217,13 +219,13 @@ fun ParentHomeScreen(
                         }
                     }
 
-                    if (state.transactions.isNotEmpty()) {
+                    if (history.isNotEmpty()) {
                         item {
                             SectionHeader(title = "Histórico recente")
                         }
                         items(
-                            items = state.transactions.take(6),
-                            key = { it.id }
+                            items = history,
+                            key = { "transaction_${it.id}" }
                         ) { transaction ->
                             TransactionRow(transaction)
                         }
