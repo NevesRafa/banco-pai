@@ -16,10 +16,14 @@ data class User(
     val goalName: String = "",
     val goalTargetCents: Long = 0L,
     val parentId: String? = null,
+    val familyIds: List<String> = emptyList(),
     val weeklyInterestRatePercent: Double = 0.0,
     val lastInterestAppliedAt: Instant? = null,
     val inviteCode: String? = null
 ) {
+    val isFamilyHead: Boolean
+        get() = parentId == null
+
     val goalProgress: Float
         get() = if (goalTargetCents <= 0L) {
             0f

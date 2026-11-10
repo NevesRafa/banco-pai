@@ -30,6 +30,11 @@ class ParentHomeViewModel(
     private val repository: FinanceRepository
 ) : MviViewModel<ParentHomeState, ParentHomeAction, ParentHomeEffect>(ParentHomeState()) {
 
+    private var dueInterestJob: Job? = null
+    private var inviteRequested = false
+    private var linkedChildId: String? = null
+    private var syncedFamilyKey: String? = null
+
     init {
         observeHome()
     }
@@ -77,9 +82,6 @@ class ParentHomeViewModel(
             ParentHomeAction.ApplyInterestNow -> applyInterestNow()
         }
     }
-
-    private var dueInterestJob: Job? = null
-    private var inviteRequested = false
 
     private fun observeHome() {
         repository.authState
@@ -138,9 +140,9 @@ class ParentHomeViewModel(
                         pendingWithdrawals = pending,
                         errorMessage = null,
                         interestRateInput = if (it.interestRateInput.isBlank() &&
-                            (data.parent?.weeklyInterestRatePercent ?: 0.0) > 0.0
+                            (data.child?.weeklyInterestRatePercent ?: 0.0) > 0.0
                         ) {
-                            formatRate(data.parent?.weeklyInterestRatePercent ?: 0.0)
+                            formatRate(data.child?.weeklyInterestRatePercent ?: 0.0)
                         } else {
                             it.interestRateInput
                         }
@@ -148,7 +150,9 @@ class ParentHomeViewModel(
                 }
 
                 ensureInviteCode(data.parent)
-                applyDueInterest(data.parent, data.child)
+                linkInviteToChild(data.parent, data.child)
+                syncFamilyTransactions(data.parent, data.child)
+                applyDueInterest(data.child)
             }
             .catch { error ->
                 updateState {
@@ -256,7 +260,7 @@ class ParentHomeViewModel(
 
     private fun saveInterestRate() {
         val current = currentState
-        val parent = current.parent ?: return
+        val child = current.child ?: return
         val percent = current.interestRateInput
             .replace(',', '.')
             .trim()
@@ -273,8 +277,7 @@ class ParentHomeViewModel(
             updateState { it.copy(isSavingInterestRate = true) }
 
             repository.updateInterestRate(
-                parentId = parent.uid,
-                childId = current.child?.uid,
+                childId = child.uid,
                 percentPerWeek = percent
             )
                 .onSuccess {
@@ -294,14 +297,13 @@ class ParentHomeViewModel(
 
     private fun applyInterestNow() {
         val current = currentState
-        val parent = current.parent ?: return
         val child = current.child ?: return
         if (current.isApplyingInterest) return
 
         viewModelScope.launch {
             updateState { it.copy(isApplyingInterest = true) }
 
-            repository.applyInterestNow(parentId = parent.uid, childId = child.uid)
+            repository.applyInterestNow(childId = child.uid)
                 .onSuccess { transaction ->
                     val message = if (transaction == null) {
                         "Nada a creditar: saldo zerado ou taxa em zero."
@@ -319,20 +321,43 @@ class ParentHomeViewModel(
     }
 
     private fun ensureInviteCode(parent: User?) {
-        if (parent == null || parent.inviteCode != null || inviteRequested) return
+        if (parent == null || !parent.isFamilyHead) return
+        if (parent.inviteCode != null || inviteRequested) return
         inviteRequested = true
         viewModelScope.launch {
             repository.ensureInviteCode(parent.uid)
         }
     }
 
-    private fun applyDueInterest(parent: User?, child: User?) {
+    private fun linkInviteToChild(parent: User?, child: User?) {
+        if (parent == null || child == null || !parent.isFamilyHead) return
+        val code = parent.inviteCode ?: return
+        if (linkedChildId == child.uid) return
+        viewModelScope.launch {
+            repository.linkInviteToChild(code, child.uid)
+                .onSuccess { linkedChildId = child.uid }
+        }
+    }
+
+    private fun syncFamilyTransactions(parent: User?, child: User?) {
         if (parent == null || child == null) return
-        if (parent.weeklyInterestRatePercent <= 0.0) return
+        if (child.familyIds.size < 2) return
+        val key = child.uid + child.familyIds.sorted().joinToString(",")
+        if (syncedFamilyKey == key) return
+        syncedFamilyKey = key
+        viewModelScope.launch {
+            repository.syncFamilyTransactions(childId = child.uid, parentId = parent.uid)
+        }
+    }
+
+    private fun applyDueInterest(child: User?) {
+        if (child == null) return
+        if (child.weeklyInterestRatePercent <= 0.0) return
+        if (child.lastInterestAppliedAt == null) return
         if (dueInterestJob?.isActive == true) return
 
         dueInterestJob = viewModelScope.launch {
-            repository.applyDueInterest(parentId = parent.uid, childId = child.uid)
+            repository.applyDueInterest(childId = child.uid)
                 .onSuccess { transaction ->
                     if (transaction != null) {
                         emitEffect(

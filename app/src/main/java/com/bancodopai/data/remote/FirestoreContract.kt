@@ -14,6 +14,7 @@ internal object FirestoreContract {
     const val GOAL_NAME = "goalName"
     const val GOAL_TARGET_CENTS = "goalTargetCents"
     const val PARENT_ID = "parentId"
+    const val PARENT_IDS = "parentIds"
     const val WEEKLY_INTEREST_RATE = "weeklyInterestRatePercent"
     const val LAST_INTEREST_APPLIED_AT = "lastInterestAppliedAt"
     const val INVITE_CODE = "inviteCode"

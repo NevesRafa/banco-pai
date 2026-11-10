@@ -11,67 +11,83 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(uid)).data;
     }
 
+    // Um pai administra o filho quando seu UID está em parentIds do filho.
     function isParentOf(childId) {
       return isSignedIn()
-        && userDoc(childId).parentId == request.auth.uid;
+        && request.auth.uid in userDoc(childId).get('parentIds', []);
     }
 
     match /users/{userId} {
       // Para queries (list), a condição precisa ser provável a partir dos
-      // filtros da própria query. Por isso comparamos direto com parentId.
+      // filtros da própria query. Por isso comparamos com arrayContains.
       allow read: if isSignedIn()
         && (request.auth.uid == userId
-            || resource.data.parentId == request.auth.uid);
+            || request.auth.uid in resource.data.get('parentIds', []));
 
-      // Cadastro no primeiro login (Google ou e-mail).
-      // Pai entra direto; filho precisa de um código de convite válido.
+      // Cadastro no primeiro login.
+      //  - Pai responsável: entra sem convite e recebe um código.
+      //  - Cônjuge: entra com o código do pai (vira membro da família).
+      //  - Filho: entra com o código do pai e fica vinculado a ele.
       allow create: if isSignedIn()
         && request.auth.uid == userId
         && (
           (request.resource.data.role == 'PARENT'
             && request.resource.data.parentId == null)
           ||
+          (request.resource.data.role == 'PARENT'
+            && request.resource.data.parentId is string
+            && request.resource.data.inviteCode is string
+            && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.parentId
+                 == request.resource.data.parentId)
+          ||
           (request.resource.data.role == 'CHILD'
             && request.resource.data.parentId is string
             && request.resource.data.inviteCode is string
+            && request.resource.data.parentIds == [request.resource.data.parentId]
             && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.parentId
                  == request.resource.data.parentId)
         );
 
       allow update: if (
-        // Pai edita o próprio perfil (nome, meta, taxa e convite).
+        // Pai edita o próprio perfil (nome, convite).
         (request.auth.uid == userId
           && resource.data.role == 'PARENT'
           && request.resource.data.diff(resource.data)
                .affectedKeys()
-               .hasOnly([
-                 'name', 'goalName', 'goalTargetCents',
-                 'weeklyInterestRatePercent', 'lastInterestAppliedAt',
-                 'inviteCode'
-               ]))
+               .hasOnly(['name', 'inviteCode']))
         ||
-        // Filho edita apenas nome e meta; nunca saldo ou taxa.
+        // Filho edita apenas nome e meta.
         (request.auth.uid == userId
           && resource.data.role == 'CHILD'
           && request.resource.data.diff(resource.data)
                .affectedKeys()
                .hasOnly(['name', 'goalName', 'goalTargetCents']))
         ||
-        // Pai edita saldo, meta e taxa do filho.
+        // Qualquer pai da família edita saldo, meta, taxa e data do rendimento do filho.
         (isParentOf(userId)
+          && resource.data.role == 'CHILD'
           && request.resource.data.diff(resource.data)
                .affectedKeys()
                .hasOnly([
-                 'name', 'goalName', 'goalTargetCents',
-                 'balanceCents', 'weeklyInterestRatePercent'
+                 'name', 'goalName', 'goalTargetCents', 'balanceCents',
+                 'weeklyInterestRatePercent', 'lastInterestAppliedAt'
                ]))
+        ||
+        // Cônjuge entra na família: adiciona somente o próprio UID em parentIds.
+        (resource.data.role == 'CHILD'
+          && userDoc(request.auth.uid).role == 'PARENT'
+          && userDoc(request.auth.uid).parentId == resource.data.parentId
+          && !(request.auth.uid in resource.data.parentIds)
+          && request.resource.data.parentIds == resource.data.parentIds + [request.auth.uid]
+          && request.resource.data.diff(resource.data)
+               .affectedKeys()
+               .hasOnly(['parentIds']))
       );
 
       allow delete: if false;
     }
 
-    // Códigos de convite ligam um filho novo ao pai.
-    // Leitura por ID (get) é liberada para permitir o cadastro.
+    // Códigos de convite ligam um pai (ou cônjuge) e um filho à família.
     match /invites/{code} {
       allow get: if isSignedIn();
       allow list: if false;
@@ -82,39 +98,42 @@ service cloud.firestore {
     }
 
     match /transactions/{transactionId} {
-      // childId/parentId permitem que as queries do app sejam validadas
-      // sem depender de get() em operações de list.
       allow read: if isSignedIn()
         && (resource.data.childId == request.auth.uid
-            || resource.data.parentId == request.auth.uid);
+            || request.auth.uid in resource.data.get('parentIds', []));
 
       allow create: if isSignedIn() && (
-        // Filho cria somente pedido pendente de saque.
+        // Filho cria somente pedido pendente de saque para a própria família.
         (request.resource.data.childId == request.auth.uid
-          && request.resource.data.parentId
-               == userDoc(request.auth.uid).parentId
           && request.resource.data.type == 'WITHDRAW'
           && request.resource.data.status == 'PENDING'
           && request.resource.data.amountCents is int
-          && request.resource.data.amountCents > 0)
+          && request.resource.data.amountCents > 0
+          && request.resource.data.parentIds == userDoc(request.auth.uid).get('parentIds', []))
         ||
-        // Pai cria depósito/rendimento já aprovado para o próprio filho.
-        (userDoc(request.resource.data.childId).parentId
-               == request.auth.uid
-          && request.resource.data.parentId == request.auth.uid
+        // Qualquer pai da família cria depósito/rendimento já aprovado.
+        (isParentOf(request.resource.data.childId)
           && request.resource.data.status == 'APPROVED'
           && request.resource.data.type in ['DEPOSIT', 'INTEREST']
           && request.resource.data.amountCents is int
-          && request.resource.data.amountCents > 0)
+          && request.resource.data.amountCents > 0
+          && request.auth.uid in request.resource.data.parentIds)
       );
 
       allow update: if isSignedIn()
-        && resource.data.parentId == request.auth.uid
-        && resource.data.status == 'PENDING'
-        && request.resource.data.status in ['APPROVED', 'DENIED']
-        && request.resource.data.diff(resource.data)
-             .affectedKeys()
-             .hasOnly(['status']);
+        && request.auth.uid in resource.data.get('parentIds', [])
+        && (
+          // Aprova ou nega um pedido pendente.
+          (resource.data.status == 'PENDING'
+            && request.resource.data.status in ['APPROVED', 'DENIED']
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status']))
+          ||
+          // Sincroniza os membros da família em transações antigas.
+          (request.resource.data.status == resource.data.status
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['parentIds']))
+        );
 
       allow delete: if false;
     }

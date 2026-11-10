@@ -120,7 +120,7 @@ fun OnboardingScreen(
                 )
             }
 
-            if (state.profileRole == UserRole.CHILD) {
+            run {
                 Spacer(Modifier.height(20.dp))
 
                 OutlinedTextField(
@@ -130,7 +130,15 @@ fun OnboardingScreen(
                             AuthAction.ProfileInviteCodeChanged(it)
                         )
                     },
-                    label = { Text("Código do seu pai") },
+                    label = {
+                        Text(
+                            if (state.profileRole == UserRole.CHILD) {
+                                "Código do seu pai"
+                            } else {
+                                "Código da família (se já existir)"
+                            }
+                        )
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Characters,
@@ -143,7 +151,11 @@ fun OnboardingScreen(
                 Spacer(Modifier.height(8.dp))
 
                 Text(
-                    text = "Peça o código de 6 caracteres no ajuste do app do seu pai.",
+                    text = if (state.profileRole == UserRole.CHILD) {
+                        "Peça o código de 6 caracteres ao seu pai, na tela inicial do app dele."
+                    } else {
+                        "Deixe em branco para criar uma família nova. Se for o outro responsável, use o código do pai."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

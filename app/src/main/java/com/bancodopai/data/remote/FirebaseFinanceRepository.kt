@@ -15,7 +15,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import java.util.Date
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +26,7 @@ import kotlinx.coroutines.withContext
 import java.security.SecureRandom
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.Date
 import kotlin.math.roundToLong
 
 private const val MAX_CATCH_UP_WEEKS = 4L
@@ -135,18 +135,26 @@ class FirebaseFinanceRepository(
                 throw AppError.Validation("Informe seu nome.")
             }
 
+            val code = inviteCode?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
             var parentId: String? = null
-            var code: String? = null
+            var childId: String? = null
 
-            if (role == UserRole.CHILD) {
-                val normalized = inviteCode.orEmpty().trim().uppercase()
-                if (normalized.isBlank()) {
-                    throw AppError.Validation("Informe o código do seu pai.")
-                }
-                val invite = invites.document(normalized).get().await()
+            if (code != null) {
+                val invite = invites.document(code).get().await()
                 parentId = invite.getString(FirestoreContract.PARENT_ID)
                     ?: throw AppError.Validation("Código de convite inválido.")
-                code = normalized
+                childId = invite.getString(FirestoreContract.CHILD_ID)
+            } else if (role == UserRole.CHILD) {
+                throw AppError.Validation("Informe o código do seu pai.")
+            }
+
+            if (role == UserRole.CHILD && childId != null) {
+                throw AppError.Validation("Esta família já tem um filho cadastrado.")
+            }
+            if (role == UserRole.PARENT && parentId != null && childId == null) {
+                throw AppError.Validation(
+                    "O filho ainda não está vinculado. Abra o app do pai e tente de novo."
+                )
             }
 
             val profile = User(
@@ -155,24 +163,33 @@ class FirebaseFinanceRepository(
                 email = firebaseUser.email.orEmpty(),
                 role = role,
                 parentId = parentId,
+                familyIds = if (role == UserRole.CHILD) listOfNotNull(parentId) else emptyList(),
                 inviteCode = code
             )
 
-            users.document(profile.uid).set(
-                mapOf(
-                    FirestoreContract.NAME to profile.name,
-                    FirestoreContract.EMAIL to profile.email,
-                    FirestoreContract.ROLE to profile.role.name,
-                    FirestoreContract.BALANCE_CENTS to 0L,
-                    FirestoreContract.GOAL_NAME to "",
-                    FirestoreContract.GOAL_TARGET_CENTS to 0L,
-                    FirestoreContract.WEEKLY_INTEREST_RATE to 0.0,
-                    FirestoreContract.PARENT_ID to parentId,
-                    FirestoreContract.INVITE_CODE to code
-                )
-            ).await()
+            val fields = mutableMapOf<String, Any?>(
+                FirestoreContract.NAME to profile.name,
+                FirestoreContract.EMAIL to profile.email,
+                FirestoreContract.ROLE to role.name,
+                FirestoreContract.BALANCE_CENTS to 0L,
+                FirestoreContract.GOAL_NAME to "",
+                FirestoreContract.GOAL_TARGET_CENTS to 0L,
+                FirestoreContract.PARENT_ID to parentId,
+                FirestoreContract.INVITE_CODE to code
+            )
+            if (role == UserRole.CHILD) {
+                fields[FirestoreContract.PARENT_IDS] = profile.familyIds
+            }
 
-            if (role == UserRole.PARENT) {
+            users.document(profile.uid).set(fields).await()
+
+            if (role == UserRole.PARENT && childId != null) {
+                users.document(childId)
+                    .update(FirestoreContract.PARENT_IDS, FieldValue.arrayUnion(profile.uid))
+                    .await()
+            }
+
+            if (role == UserRole.PARENT && parentId == null) {
                 ensureInviteCode(profile.uid).getOrThrow()
             }
 
@@ -202,8 +219,7 @@ class FirebaseFinanceRepository(
 
     override fun observeChildOfParent(parentId: String): Flow<User?> = callbackFlow {
         val registration = users
-            .whereEqualTo(FirestoreContract.PARENT_ID, parentId)
-            .whereEqualTo(FirestoreContract.ROLE, UserRole.CHILD.name)
+            .whereArrayContains(FirestoreContract.PARENT_IDS, parentId)
             .limit(1)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
@@ -221,11 +237,11 @@ class FirebaseFinanceRepository(
         parentId: String?
     ): Flow<List<Transaction>> = callbackFlow {
         // A regra do Firestore precisa que a query filtre por um campo
-        // diretamente comparável ao UID (childId ou parentId).
+        // que prove o acesso: childId (filho) ou parentIds (membros da família).
         val query = if (parentId == null) {
             transactions.whereEqualTo(FirestoreContract.CHILD_ID, childId)
         } else {
-            transactions.whereEqualTo(FirestoreContract.PARENT_ID, parentId)
+            transactions.whereArrayContains(FirestoreContract.PARENT_IDS, parentId)
         }
 
         val registration = query
@@ -237,6 +253,7 @@ class FirebaseFinanceRepository(
 
                 val items = snapshot?.documents
                     ?.mapNotNull { it.toTransaction() }
+                    ?.filter { it.childId == childId }
                     ?.sortedByDescending { it.timestamp }
                     .orEmpty()
 
@@ -312,9 +329,7 @@ class FirebaseFinanceRepository(
 
                 firestoreTransaction.set(
                     transactionRef,
-                    newTransaction.toDocument(
-                        childSnapshot.getString(FirestoreContract.PARENT_ID)
-                    )
+                    newTransaction.toDocument(childSnapshot.familyIds())
                 )
                 firestoreTransaction.update(
                     childRef,
@@ -364,9 +379,7 @@ class FirebaseFinanceRepository(
 
                 firestoreTransaction.set(
                     transactionRef,
-                    request.toDocument(
-                        childSnapshot.getString(FirestoreContract.PARENT_ID)
-                    )
+                    request.toDocument(childSnapshot.familyIds())
                 )
                 Unit
             }.await()
@@ -467,22 +480,21 @@ class FirebaseFinanceRepository(
     }
 
     override suspend fun updateInterestRate(
-        parentId: String,
-        childId: String?,
+        childId: String,
         percentPerWeek: Double
     ): Result<Unit> = withContext(ioDispatcher) {
         firebaseResult {
             val percent = percentPerWeek.coerceIn(0.0, 100.0)
-            val parentRef = users.document(parentId)
+            val childRef = users.document(childId)
 
             firestore.runTransaction { firestoreTransaction ->
-                val parentSnapshot = firestoreTransaction.get(parentRef)
-                if (!parentSnapshot.exists()) throw AppError.NotFound
+                val childSnapshot = firestoreTransaction.get(childRef)
+                if (!childSnapshot.exists()) throw AppError.NotFound
 
                 val updates = mutableMapOf<String, Any>(
                     FirestoreContract.WEEKLY_INTEREST_RATE to percent
                 )
-                if (parentSnapshot.getTimestamp(
+                if (childSnapshot.getTimestamp(
                         FirestoreContract.LAST_INTEREST_APPLIED_AT
                     ) == null
                 ) {
@@ -490,34 +502,25 @@ class FirebaseFinanceRepository(
                         FieldValue.serverTimestamp()
                 }
 
-                firestoreTransaction.update(parentRef, updates)
-                if (childId != null) {
-                    firestoreTransaction.update(
-                        users.document(childId),
-                        FirestoreContract.WEEKLY_INTEREST_RATE,
-                        percent
-                    )
-                }
+                firestoreTransaction.update(childRef, updates)
                 Unit
             }.await()
         }
     }
 
     override suspend fun applyDueInterest(
-        parentId: String,
         childId: String
     ): Result<Transaction?> = withContext(ioDispatcher) {
         firebaseResult {
-            applyInterestInternal(parentId, childId, manual = false)
+            applyInterestInternal(childId, manual = false)
         }
     }
 
     override suspend fun applyInterestNow(
-        parentId: String,
         childId: String
     ): Result<Transaction?> = withContext(ioDispatcher) {
         firebaseResult {
-            applyInterestInternal(parentId, childId, manual = true)
+            applyInterestInternal(childId, manual = true)
         }
     }
 
@@ -543,7 +546,8 @@ class FirebaseFinanceRepository(
                         FirestoreContract.PARENT_ID to parentId,
                         FirestoreContract.PARENT_NAME to parentName,
                         FirestoreContract.TIMESTAMP to FieldValue.serverTimestamp()
-                    )
+                    ),
+                    com.google.firebase.firestore.SetOptions.merge()
                 ).await()
                 return@firebaseResult existing
             }
@@ -564,6 +568,53 @@ class FirebaseFinanceRepository(
         }
     }
 
+    override suspend fun linkInviteToChild(
+        inviteCode: String,
+        childId: String
+    ): Result<Unit> = withContext(ioDispatcher) {
+        firebaseResult {
+            invites.document(inviteCode.trim().uppercase())
+                .update(FirestoreContract.CHILD_ID, childId)
+                .await()
+            Unit
+        }
+    }
+
+    override suspend fun syncFamilyTransactions(
+        childId: String,
+        parentId: String
+    ): Result<Unit> = withContext(ioDispatcher) {
+        firebaseResult {
+            val family = users.document(childId).get().await().familyIds()
+
+            if (family.size > 1) {
+                val snapshot = transactions
+                    .whereArrayContains(FirestoreContract.PARENT_IDS, parentId)
+                    .get()
+                    .await()
+
+                val batch = firestore.batch()
+                var pending = 0
+                snapshot.documents
+                    .filter { it.getString(FirestoreContract.CHILD_ID) == childId }
+                    .forEach { doc ->
+                        val missing = family.filterNot { it in doc.familyIds() }
+                        if (missing.isNotEmpty()) {
+                            batch.update(
+                                doc.reference,
+                                FirestoreContract.PARENT_IDS,
+                                FieldValue.arrayUnion(*missing.toTypedArray())
+                            )
+                            pending++
+                        }
+                    }
+
+                if (pending > 0) batch.commit().await()
+            }
+            Unit
+        }
+    }
+
     override suspend fun resolveInviteCode(
         code: String
     ): Result<String> = withContext(ioDispatcher) {
@@ -581,30 +632,25 @@ class FirebaseFinanceRepository(
     // ───────────────────────── Helpers ─────────────────────────
 
     private suspend fun applyInterestInternal(
-        parentId: String,
         childId: String,
         manual: Boolean
     ): Transaction? {
-        val parentRef = users.document(parentId)
         val childRef = users.document(childId)
         val transactionRef = transactions.document()
         val now = Instant.now()
 
         return firestore.runTransaction<Transaction?> { firestoreTransaction ->
-            val parentSnapshot = firestoreTransaction.get(parentRef)
             val childSnapshot = firestoreTransaction.get(childRef)
-            if (!parentSnapshot.exists() || !childSnapshot.exists()) {
-                throw AppError.NotFound
-            }
+            if (!childSnapshot.exists()) throw AppError.NotFound
 
-            val ratePercent = (parentSnapshot.get(FirestoreContract.WEEKLY_INTEREST_RATE) as? Number)
+            val ratePercent = (childSnapshot.get(FirestoreContract.WEEKLY_INTEREST_RATE) as? Number)
                 ?.toDouble() ?: 0.0
             if (ratePercent <= 0.0) {
                 if (manual) throw AppError.Validation("Defina a taxa de rendimento primeiro.")
                 return@runTransaction null
             }
 
-            val lastApplied = parentSnapshot
+            val lastApplied = childSnapshot
                 .getTimestamp(FirestoreContract.LAST_INTEREST_APPLIED_AT)
                 ?.toDate()
                 ?.toInstant()
@@ -618,7 +664,7 @@ class FirebaseFinanceRepository(
             } else {
                 if (lastApplied == null) {
                     firestoreTransaction.update(
-                        parentRef,
+                        childRef,
                         FirestoreContract.LAST_INTEREST_APPLIED_AT,
                         FieldValue.serverTimestamp()
                     )
@@ -636,7 +682,7 @@ class FirebaseFinanceRepository(
             val totalCents = (balance * ratePercent / 100.0).roundToLong() * weeks
 
             firestoreTransaction.update(
-                parentRef,
+                childRef,
                 FirestoreContract.LAST_INTEREST_APPLIED_AT,
                 Timestamp(Date.from(newLastApplied))
             )
@@ -661,7 +707,7 @@ class FirebaseFinanceRepository(
 
             firestoreTransaction.set(
                 transactionRef,
-                credit.toDocument(parentId)
+                credit.toDocument(childSnapshot.familyIds())
             )
             firestoreTransaction.update(
                 childRef,

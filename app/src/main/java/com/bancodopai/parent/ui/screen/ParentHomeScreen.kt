@@ -203,8 +203,10 @@ fun ParentHomeScreen(
                         )
                     }
 
-                    item {
-                        InviteCodeCard(code = state.parent?.inviteCode)
+                    if (state.parent?.isFamilyHead == true) {
+                        item {
+                            InviteCodeCard(code = state.parent?.inviteCode)
+                        }
                     }
 
                     item {
@@ -272,7 +274,7 @@ private fun InterestCard(
     onApplyNow: () -> Unit
 ) {
     val hasChild = state.child != null
-    val rate = state.parent?.weeklyInterestRatePercent ?: 0.0
+    val rate = state.child?.weeklyInterestRatePercent ?: 0.0
 
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -365,7 +367,7 @@ private fun InviteCodeCard(code: String?) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Text(
-                text = "Código para o filho",
+                text = "Código da família",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -374,7 +376,7 @@ private fun InviteCodeCard(code: String?) {
             Spacer(Modifier.height(4.dp))
 
             Text(
-                text = "O filho digita este código ao criar a conta com Google.",
+                text = "O filho e o outro responsável digitam este código ao criar a conta com Google.",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary
             )

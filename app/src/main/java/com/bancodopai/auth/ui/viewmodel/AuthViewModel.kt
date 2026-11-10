@@ -64,12 +64,7 @@ class AuthViewModel(
             is AuthAction.ProfileRoleSelected -> updateState {
                 it.copy(
                     profileRole = action.role,
-                    profileError = null,
-                    profileInviteCode = if (action.role == UserRole.PARENT) {
-                        ""
-                    } else {
-                        it.profileInviteCode
-                    }
+                    profileError = null
                 )
             }
 
@@ -260,11 +255,7 @@ class AuthViewModel(
             repository.createProfile(
                 name = current.profileName,
                 role = current.profileRole,
-                inviteCode = if (current.profileRole == UserRole.CHILD) {
-                    current.profileInviteCode
-                } else {
-                    null
-                }
+                inviteCode = current.profileInviteCode.takeIf { it.isNotBlank() }
             )
                 .onSuccess { user ->
                     lastNavigatedUid = user.uid

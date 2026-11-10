@@ -25,6 +25,7 @@ internal fun DocumentSnapshot.toUser(): User? {
         goalName = getString(FirestoreContract.GOAL_NAME).orEmpty(),
         goalTargetCents = longOrZero(FirestoreContract.GOAL_TARGET_CENTS),
         parentId = getString(FirestoreContract.PARENT_ID),
+        familyIds = familyIds(),
         weeklyInterestRatePercent = (get(FirestoreContract.WEEKLY_INTEREST_RATE) as? Number)
             ?.toDouble() ?: 0.0,
         lastInterestAppliedAt = getTimestamp(FirestoreContract.LAST_INTEREST_APPLIED_AT)
@@ -63,8 +64,19 @@ internal fun DocumentSnapshot.toTransaction(): Transaction? {
 internal fun DocumentSnapshot.longOrZero(field: String): Long =
     (get(field) as? Number)?.toLong() ?: 0L
 
+/**
+ * Pais que administram este filho. Documentos antigos só têm parentId,
+ * por isso ele é usado como fallback.
+ */
+internal fun DocumentSnapshot.familyIds(): List<String> {
+    val ids = (get(FirestoreContract.PARENT_IDS) as? List<*>)
+        ?.filterIsInstance<String>()
+        .orEmpty()
+    return ids.ifEmpty { listOfNotNull(getString(FirestoreContract.PARENT_ID)) }
+}
+
 internal fun Transaction.toDocument(
-    parentId: String? = null
+    parentIds: List<String>
 ): Map<String, Any> = buildMap {
     put(FirestoreContract.CHILD_ID, childId)
     put(FirestoreContract.TYPE, type.name)
@@ -72,7 +84,7 @@ internal fun Transaction.toDocument(
     put(FirestoreContract.DESCRIPTION, description)
     put(FirestoreContract.STATUS, status.name)
     put(FirestoreContract.TIMESTAMP, FieldValue.serverTimestamp())
-    parentId?.let { put(FirestoreContract.PARENT_ID, it) }
+    put(FirestoreContract.PARENT_IDS, parentIds)
 }
 
 private inline fun <reified T : Enum<T>> String?.toEnumOrNull(): T? {

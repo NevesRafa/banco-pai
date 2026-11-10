@@ -71,8 +71,7 @@ interface FinanceRepository {
     ): Result<Unit>
 
     suspend fun updateInterestRate(
-        parentId: String,
-        childId: String?,
+        childId: String,
         percentPerWeek: Double
     ): Result<Unit>
 
@@ -81,20 +80,20 @@ interface FinanceRepository {
      * acontece dentro da transação, então chamadas repetidas não duplicam.
      * Retorna null quando nada é devido.
      */
-    suspend fun applyDueInterest(
-        parentId: String,
-        childId: String
-    ): Result<Transaction?>
+    suspend fun applyDueInterest(childId: String): Result<Transaction?>
 
     /**
      * Credita uma semana de rendimento agora e reinicia a contagem.
      */
-    suspend fun applyInterestNow(
-        parentId: String,
-        childId: String
-    ): Result<Transaction?>
+    suspend fun applyInterestNow(childId: String): Result<Transaction?>
 
     suspend fun ensureInviteCode(parentId: String): Result<String>
+
+    /** Vincula o filho ao código do pai, para que o cônjuge possa entrar. */
+    suspend fun linkInviteToChild(inviteCode: String, childId: String): Result<Unit>
+
+    /** Copia os membros da família para transações antigas do filho. */
+    suspend fun syncFamilyTransactions(childId: String, parentId: String): Result<Unit>
 
     suspend fun resolveInviteCode(code: String): Result<String>
 }
