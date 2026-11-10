@@ -7,8 +7,6 @@ import com.bancodopai.core.toCentsOrNull
 import com.bancodopai.core.userMessage
 import com.bancodopai.domain.model.DepositReason
 import com.bancodopai.domain.model.Transaction
-import com.bancodopai.domain.model.TransactionStatus
-import com.bancodopai.domain.model.TransactionType
 import com.bancodopai.domain.model.User
 import com.bancodopai.domain.repository.FinanceRepository
 import com.bancodopai.parent.mvi.action.ParentHomeAction
@@ -17,11 +15,11 @@ import com.bancodopai.parent.mvi.state.ParentHomeState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
@@ -32,8 +30,8 @@ class ParentHomeViewModel(
 
     private var dueInterestJob: Job? = null
     private var inviteRequested = false
-    private var linkedChildId: String? = null
-    private var syncedFamilyKey: String? = null
+    private var linkedChildrenKey: String? = null
+    private val syncedFamilyKeys = mutableSetOf<String>()
 
     init {
         observeHome()
@@ -80,6 +78,8 @@ class ParentHomeViewModel(
             ParentHomeAction.SaveInterestRate -> saveInterestRate()
 
             ParentHomeAction.ApplyInterestNow -> applyInterestNow()
+
+            is ParentHomeAction.SelectChild -> selectChild(action.childId)
         }
     }
 
@@ -92,22 +92,14 @@ class ParentHomeViewModel(
                 } else {
                     repository.observeUser(uid).flatMapLatest { parent ->
                         if (parent == null) {
-                            flowOf(ParentData(null, null, emptyList()))
+                            flowOf(ParentData(null, emptyList(), emptyList()))
                         } else {
-                            repository.observeChildOfParent(parent.uid)
-                                .flatMapLatest { child ->
-                                    if (child == null) {
-                                        flowOf(ParentData(parent, null, emptyList()))
-                                    } else {
-                                        repository.observeTransactions(
-                                            childId = child.uid,
-                                            parentId = parent.uid
-                                        )
-                                            .map { transactions ->
-                                                ParentData(parent, child, transactions)
-                                            }
-                                    }
-                                }
+                            combine(
+                                repository.observeChildrenOfParent(parent.uid),
+                                repository.observeFamilyTransactions(parent.uid)
+                            ) { children, transactions ->
+                                ParentData(parent, children, transactions)
+                            }
                         }
                     }
                 }
@@ -118,31 +110,30 @@ class ParentHomeViewModel(
                         it.copy(
                             isLoading = false,
                             parent = null,
-                            child = null,
-                            transactions = emptyList(),
-                            pendingWithdrawals = emptyList()
+                            children = emptyList(),
+                            familyTransactions = emptyList()
                         )
                     }
                     return@onEach
                 }
 
-                val pending = data.transactions.filter {
-                    it.type == TransactionType.WITHDRAW &&
-                        it.status == TransactionStatus.PENDING
-                }
-
                 updateState {
+                    val selected = it.selectedChildId
+                        ?.takeIf { id -> data.children.any { child -> child.uid == id } }
+                        ?: data.children.firstOrNull()?.uid
+                    val focus = data.children.firstOrNull { child -> child.uid == selected }
+
                     it.copy(
                         isLoading = false,
                         parent = data.parent,
-                        child = data.child,
-                        transactions = data.transactions,
-                        pendingWithdrawals = pending,
+                        children = data.children,
+                        selectedChildId = selected,
+                        familyTransactions = data.transactions,
                         errorMessage = null,
-                        interestRateInput = if (it.interestRateInput.isBlank() &&
-                            (data.child?.weeklyInterestRatePercent ?: 0.0) > 0.0
+                        interestRateInput = if (focus != null && it.interestRateInput.isBlank() &&
+                            focus.weeklyInterestRatePercent > 0.0
                         ) {
-                            formatRate(data.child?.weeklyInterestRatePercent ?: 0.0)
+                            formatRate(focus.weeklyInterestRatePercent)
                         } else {
                             it.interestRateInput
                         }
@@ -150,9 +141,9 @@ class ParentHomeViewModel(
                 }
 
                 ensureInviteCode(data.parent)
-                linkInviteToChild(data.parent, data.child)
-                syncFamilyTransactions(data.parent, data.child)
-                applyDueInterest(data.child)
+                linkInviteToChildren(data.parent, data.children)
+                syncFamilyTransactions(data.parent, data.children)
+                applyDueInterest(data.children)
             }
             .catch { error ->
                 updateState {
@@ -163,6 +154,20 @@ class ParentHomeViewModel(
                 }
             }
             .launchIn(viewModelScope)
+    }
+
+    private fun selectChild(childId: String) {
+        updateState {
+            val focus = it.children.firstOrNull { child -> child.uid == childId }
+            it.copy(
+                selectedChildId = childId,
+                interestRateInput = if (focus != null && focus.weeklyInterestRatePercent > 0.0) {
+                    formatRate(focus.weeklyInterestRatePercent)
+                } else {
+                    ""
+                }
+            )
+        }
     }
 
     private fun submitDeposit() {
@@ -283,7 +288,7 @@ class ParentHomeViewModel(
                 .onSuccess {
                     emitEffect(
                         ParentHomeEffect.ShowMessage(
-                            "Taxa atualizada para ${formatRate(percent)}% por semana."
+                            "Taxa de ${child.name} atualizada para ${formatRate(percent)}% por semana."
                         )
                     )
                 }
@@ -329,44 +334,50 @@ class ParentHomeViewModel(
         }
     }
 
-    private fun linkInviteToChild(parent: User?, child: User?) {
-        if (parent == null || child == null || !parent.isFamilyHead) return
+    private fun linkInviteToChildren(parent: User?, children: List<User>) {
+        if (parent == null || !parent.isFamilyHead) return
         val code = parent.inviteCode ?: return
-        if (linkedChildId == child.uid) return
+        val ids = children.map { it.uid }.sorted()
+        val key = ids.joinToString(",")
+        if (linkedChildrenKey == key) return
         viewModelScope.launch {
-            repository.linkInviteToChild(code, child.uid)
-                .onSuccess { linkedChildId = child.uid }
+            repository.linkInviteToChildren(code, ids)
+                .onSuccess { linkedChildrenKey = key }
         }
     }
 
-    private fun syncFamilyTransactions(parent: User?, child: User?) {
-        if (parent == null || child == null) return
-        if (child.familyIds.size < 2) return
-        val key = child.uid + child.familyIds.sorted().joinToString(",")
-        if (syncedFamilyKey == key) return
-        syncedFamilyKey = key
-        viewModelScope.launch {
-            repository.syncFamilyTransactions(childId = child.uid, parentId = parent.uid)
+    private fun syncFamilyTransactions(parent: User?, children: List<User>) {
+        if (parent == null) return
+        children.filter { it.familyIds.size > 1 }.forEach { child ->
+            val key = child.uid + child.familyIds.sorted().joinToString(",")
+            if (!syncedFamilyKeys.add(key)) return@forEach
+            viewModelScope.launch {
+                repository.syncFamilyTransactions(childId = child.uid, parentId = parent.uid)
+            }
         }
     }
 
-    private fun applyDueInterest(child: User?) {
-        if (child == null) return
-        if (child.weeklyInterestRatePercent <= 0.0) return
-        if (child.lastInterestAppliedAt == null) return
+    private fun applyDueInterest(children: List<User>) {
         if (dueInterestJob?.isActive == true) return
+        val due = children.filter {
+            it.weeklyInterestRatePercent > 0.0 && it.lastInterestAppliedAt != null
+        }
+        if (due.isEmpty()) return
 
         dueInterestJob = viewModelScope.launch {
-            repository.applyDueInterest(childId = child.uid)
-                .onSuccess { transaction ->
-                    if (transaction != null) {
-                        emitEffect(
-                            ParentHomeEffect.ShowMessage(
-                                "Rendimento semanal aplicado: ${transaction.amountCents.toBrl()}."
+            due.forEach { child ->
+                repository.applyDueInterest(childId = child.uid)
+                    .onSuccess { transaction ->
+                        if (transaction != null) {
+                            emitEffect(
+                                ParentHomeEffect.ShowMessage(
+                                    "Rendimento semanal de ${child.name}: " +
+                                        transaction.amountCents.toBrl() + "."
+                                )
                             )
-                        )
+                        }
                     }
-                }
+            }
         }
     }
 
@@ -375,7 +386,7 @@ class ParentHomeViewModel(
 
     private data class ParentData(
         val parent: User?,
-        val child: User?,
+        val children: List<User>,
         val transactions: List<Transaction>
     )
 }

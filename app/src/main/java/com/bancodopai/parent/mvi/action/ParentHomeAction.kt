@@ -14,5 +14,6 @@ sealed interface ParentHomeAction {
     data class InterestRateChanged(val value: String) : ParentHomeAction
     data object SaveInterestRate : ParentHomeAction
     data object ApplyInterestNow : ParentHomeAction
+    data class SelectChild(val childId: String) : ParentHomeAction
     data object DismissError : ParentHomeAction
 }

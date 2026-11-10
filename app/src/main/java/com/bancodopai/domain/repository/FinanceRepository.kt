@@ -30,12 +30,15 @@ interface FinanceRepository {
 
     fun observeUser(uid: String): Flow<User?>
 
-    fun observeChildOfParent(parentId: String): Flow<User?>
+    fun observeChildrenOfParent(parentId: String): Flow<List<User>>
 
     fun observeTransactions(
         childId: String,
         parentId: String? = null
     ): Flow<List<Transaction>>
+
+    /** Todas as transações dos filhos administrados pela família. */
+    fun observeFamilyTransactions(parentId: String): Flow<List<Transaction>>
 
     fun observePendingWithdrawals(
         childId: String,
@@ -89,8 +92,8 @@ interface FinanceRepository {
 
     suspend fun ensureInviteCode(parentId: String): Result<String>
 
-    /** Vincula o filho ao código do pai, para que o cônjuge possa entrar. */
-    suspend fun linkInviteToChild(inviteCode: String, childId: String): Result<Unit>
+    /** Registra os filhos do código da família, para que um novo responsável possa entrar. */
+    suspend fun linkInviteToChildren(inviteCode: String, childIds: List<String>): Result<Unit>
 
     /** Copia os membros da família para transações antigas do filho. */
     suspend fun syncFamilyTransactions(childId: String, parentId: String): Result<Unit>

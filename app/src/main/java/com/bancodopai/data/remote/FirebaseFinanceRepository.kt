@@ -137,23 +137,22 @@ class FirebaseFinanceRepository(
 
             val code = inviteCode?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
             var parentId: String? = null
-            var childId: String? = null
+            var childIds: List<String> = emptyList()
 
             if (code != null) {
                 val invite = invites.document(code).get().await()
                 parentId = invite.getString(FirestoreContract.PARENT_ID)
                     ?: throw AppError.Validation("Código de convite inválido.")
-                childId = invite.getString(FirestoreContract.CHILD_ID)
+                childIds = (invite.get(FirestoreContract.CHILD_IDS) as? List<*>)
+                    ?.filterIsInstance<String>()
+                    .orEmpty()
             } else if (role == UserRole.CHILD) {
                 throw AppError.Validation("Informe o código do seu pai.")
             }
 
-            if (role == UserRole.CHILD && childId != null) {
-                throw AppError.Validation("Esta família já tem um filho cadastrado.")
-            }
-            if (role == UserRole.PARENT && parentId != null && childId == null) {
+            if (role == UserRole.PARENT && parentId != null && childIds.isEmpty()) {
                 throw AppError.Validation(
-                    "O filho ainda não está vinculado. Abra o app do pai e tente de novo."
+                    "Nenhum filho vinculado a este código ainda. Abra o app do pai e tente de novo."
                 )
             }
 
@@ -183,10 +182,12 @@ class FirebaseFinanceRepository(
 
             users.document(profile.uid).set(fields).await()
 
-            if (role == UserRole.PARENT && childId != null) {
-                users.document(childId)
-                    .update(FirestoreContract.PARENT_IDS, FieldValue.arrayUnion(profile.uid))
-                    .await()
+            if (role == UserRole.PARENT) {
+                childIds.forEach { childId ->
+                    users.document(childId)
+                        .update(FirestoreContract.PARENT_IDS, FieldValue.arrayUnion(profile.uid))
+                        .await()
+                }
             }
 
             if (role == UserRole.PARENT && parentId == null) {
@@ -217,20 +218,43 @@ class FirebaseFinanceRepository(
         awaitClose { registration.remove() }
     }.distinctUntilChanged()
 
-    override fun observeChildOfParent(parentId: String): Flow<User?> = callbackFlow {
+    override fun observeChildrenOfParent(parentId: String): Flow<List<User>> = callbackFlow {
         val registration = users
             .whereArrayContains(FirestoreContract.PARENT_IDS, parentId)
-            .limit(1)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     close(error.toAppError())
                     return@addSnapshotListener
                 }
-                trySend(snapshot?.documents?.firstOrNull()?.toUser())
+                val children = snapshot?.documents
+                    ?.mapNotNull { it.toUser() }
+                    ?.filter { it.role == UserRole.CHILD }
+                    ?.sortedBy { it.name.lowercase() }
+                    .orEmpty()
+                trySend(children)
             }
 
         awaitClose { registration.remove() }
     }.distinctUntilChanged()
+
+    override fun observeFamilyTransactions(parentId: String): Flow<List<Transaction>> =
+        callbackFlow {
+            val registration = transactions
+                .whereArrayContains(FirestoreContract.PARENT_IDS, parentId)
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null) {
+                        close(error.toAppError())
+                        return@addSnapshotListener
+                    }
+                    val items = snapshot?.documents
+                        ?.mapNotNull { it.toTransaction() }
+                        ?.sortedByDescending { it.timestamp }
+                        .orEmpty()
+                    trySend(items)
+                }
+
+            awaitClose { registration.remove() }
+        }.distinctUntilChanged()
 
     override fun observeTransactions(
         childId: String,
@@ -568,13 +592,13 @@ class FirebaseFinanceRepository(
         }
     }
 
-    override suspend fun linkInviteToChild(
+    override suspend fun linkInviteToChildren(
         inviteCode: String,
-        childId: String
+        childIds: List<String>
     ): Result<Unit> = withContext(ioDispatcher) {
         firebaseResult {
             invites.document(inviteCode.trim().uppercase())
-                .update(FirestoreContract.CHILD_ID, childId)
+                .update(FirestoreContract.CHILD_IDS, childIds)
                 .await()
             Unit
         }

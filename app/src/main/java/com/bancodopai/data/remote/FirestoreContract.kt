@@ -21,6 +21,7 @@ internal object FirestoreContract {
 
     // invites
     const val PARENT_NAME = "parentName"
+    const val CHILD_IDS = "childIds"
 
     // transactions
     const val CHILD_ID = "childId"

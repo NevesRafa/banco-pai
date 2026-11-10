@@ -181,6 +181,36 @@ fun ParentHomeScreen(
                         ParentGreeting(parent = state.parent)
                     }
 
+                    if (state.children.size > 1) {
+                        item {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                state.children.forEach { child ->
+                                    val pending = state.pendingCountFor(child.uid)
+                                    FilterChip(
+                                        selected = child.uid == state.child?.uid,
+                                        onClick = {
+                                            viewModel.onAction(
+                                                ParentHomeAction.SelectChild(child.uid)
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                if (pending > 0) {
+                                                    "${child.name} · $pending pendente(s)"
+                                                } else {
+                                                    child.name
+                                                }
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         ParentSummaryCard(
                             child = state.child,
