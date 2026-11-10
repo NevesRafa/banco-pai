@@ -19,3 +19,6 @@ local.properties
 # Keystore e credenciais
 *.jks
 *.keystore
+
+# Firebase CLI
+.firebase/

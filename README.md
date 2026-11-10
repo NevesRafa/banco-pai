@@ -21,21 +21,23 @@ O app abre na tela de login e, após autenticar, navega para a home do filho ou 
 
 ## Configuração do Firebase
 
-O arquivo `app/google-services.json` atual é um **placeholder** e está no `.gitignore`.
-Para o app funcionar de verdade:
+Projeto Firebase: **`bancopai`**
+Firestore: banco `(default)` em `southamerica-east1` (São Paulo).
+
+O `google-services.json` real já está configurado em `app/google-services.json`, mas é **ignorado pelo Git** para não versionar chaves. Para outro ambiente:
 
 1. Crie um projeto no [Firebase Console](https://console.firebase.google.com/).
 2. Adicione um app Android com o pacote `com.bancodopai`.
-3. Baixe o `google-services.json` real e substitua `app/google-services.json`.
+3. Baixe o `google-services.json` real e coloque em `app/google-services.json`.
 4. Ative o provedor **E-mail/senha** em Authentication.
 5. Crie o Firestore em modo de produção.
 6. Publique as regras:
 
 ```bash
-firebase deploy --only firestore:rules
+firebase deploy --only firestore:rules --project bancopai
 ```
 
-As regras estão em `firebase/firestore.rules`.
+As regras estão em `firebase/firestore.rules` e o projeto padrão em `.firebaserc`.
 
 ## Dados iniciais
 
@@ -152,6 +154,6 @@ com.bancodopai/
 
 ## Observações
 
-- `Google Services` usa o placeholder local; sem o JSON real, o login falha com uma mensagem de Firebase não configurado.
+- O `google-services.json` real fica fora do Git; sem ele, o login falha com uma mensagem de Firebase não configurado.
 - O `timestamp` retornado por `deposit`/`requestWithdrawal` é aproximado (`Instant.now()`). O valor canônico vem do `serverTimestamp()` pelo Flow.
 - A ordenação das transações é feita no cliente para evitar índice composto nesta fase.
