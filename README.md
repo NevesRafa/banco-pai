@@ -41,7 +41,16 @@ As regras estão em `firebase/firestore.rules` e o projeto padrão em `.firebase
 
 ## Dados iniciais
 
-Crie dois usuários em **Authentication** e os documentos correspondentes em `users`.
+O projeto `bancopai` já vem com duas contas de teste e documentos semeados no Firestore:
+
+| Papel | E-mail | Senha |
+|---|---|---|
+| Pai | `pai@bancopai.app` | `BancoPai123!` |
+| Filho | `filho@bancopai.app` | `BancoPai123!` |
+
+O filho começa com R$ 50,00, meta de R$ 200,00 e um pedido de saque pendente de R$ 20,00.
+
+Para recriar manualmente, crie os usuários em **Authentication** e os documentos correspondentes em `users`.
 O ID do documento deve ser o UID do usuário.
 
 Pai:
