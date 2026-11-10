@@ -1,16 +1,30 @@
 package com.bancodopai.domain.repository
 
+import com.bancodopai.domain.model.GoogleSignInResult
 import com.bancodopai.domain.model.Transaction
 import com.bancodopai.domain.model.User
+import com.bancodopai.domain.model.UserRole
 import kotlinx.coroutines.flow.Flow
 
 interface FinanceRepository {
 
     val currentUserId: String?
 
+    val currentUserName: String?
+
+    val currentUserEmail: String?
+
     val authState: Flow<String?>
 
     suspend fun signIn(email: String, password: String): Result<User>
+
+    suspend fun signInWithGoogle(idToken: String): Result<GoogleSignInResult>
+
+    suspend fun createProfile(
+        name: String,
+        role: UserRole,
+        inviteCode: String?
+    ): Result<User>
 
     suspend fun signOut(): Result<Unit>
 
@@ -55,4 +69,32 @@ interface FinanceRepository {
         goalName: String,
         goalTargetCents: Long
     ): Result<Unit>
+
+    suspend fun updateInterestRate(
+        parentId: String,
+        childId: String?,
+        percentPerWeek: Double
+    ): Result<Unit>
+
+    /**
+     * Aplica o rendimento das semanas vencidas. A conferência das datas
+     * acontece dentro da transação, então chamadas repetidas não duplicam.
+     * Retorna null quando nada é devido.
+     */
+    suspend fun applyDueInterest(
+        parentId: String,
+        childId: String
+    ): Result<Transaction?>
+
+    /**
+     * Credita uma semana de rendimento agora e reinicia a contagem.
+     */
+    suspend fun applyInterestNow(
+        parentId: String,
+        childId: String
+    ): Result<Transaction?>
+
+    suspend fun ensureInviteCode(parentId: String): Result<String>
+
+    suspend fun resolveInviteCode(code: String): Result<String>
 }

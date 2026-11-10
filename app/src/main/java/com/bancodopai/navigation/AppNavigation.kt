@@ -25,6 +25,7 @@ import androidx.navigation.compose.rememberNavController
 import com.bancodopai.auth.mvi.action.AuthAction
 import com.bancodopai.auth.mvi.effect.AuthEffect
 import com.bancodopai.auth.ui.screen.LoginScreen
+import com.bancodopai.auth.ui.screen.OnboardingScreen
 import com.bancodopai.auth.ui.viewmodel.AuthViewModel
 import com.bancodopai.child.ui.screen.ChildHomeScreen
 import com.bancodopai.core.ui.theme.BancoDoPaiTheme
@@ -34,6 +35,7 @@ import org.koin.androidx.compose.koinViewModel
 
 private object Routes {
     const val LOGIN = "login"
+    const val ONBOARDING = "onboarding"
     const val CHILD_HOME = "child_home"
     const val PARENT_HOME = "parent_home"
 }
@@ -57,6 +59,10 @@ fun AppNavigation(
                     navController.navigateToRoot(route)
                 }
 
+                AuthEffect.NavigateToOnboarding -> {
+                    navController.navigateToRoot(Routes.ONBOARDING)
+                }
+
                 AuthEffect.NavigateToLogin -> {
                     navController.navigateToRoot(Routes.LOGIN)
                 }
@@ -73,6 +79,10 @@ fun AppNavigation(
         ) {
             composable(Routes.LOGIN) {
                 LoginScreen(viewModel = authViewModel)
+            }
+
+            composable(Routes.ONBOARDING) {
+                OnboardingScreen(viewModel = authViewModel)
             }
 
             composable(Routes.CHILD_HOME) {

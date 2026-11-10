@@ -11,5 +11,8 @@ sealed interface ParentHomeAction {
     data object SubmitDeposit : ParentHomeAction
     data class ApproveWithdrawal(val transactionId: String) : ParentHomeAction
     data class DenyWithdrawal(val transactionId: String) : ParentHomeAction
+    data class InterestRateChanged(val value: String) : ParentHomeAction
+    data object SaveInterestRate : ParentHomeAction
+    data object ApplyInterestNow : ParentHomeAction
     data object DismissError : ParentHomeAction
 }

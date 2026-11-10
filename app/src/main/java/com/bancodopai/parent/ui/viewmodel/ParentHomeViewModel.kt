@@ -2,6 +2,7 @@ package com.bancodopai.parent.ui.viewmodel
 
 import androidx.lifecycle.viewModelScope
 import com.bancodopai.core.mvi.MviViewModel
+import com.bancodopai.core.toBrl
 import com.bancodopai.core.toCentsOrNull
 import com.bancodopai.core.userMessage
 import com.bancodopai.domain.model.DepositReason
@@ -14,6 +15,7 @@ import com.bancodopai.parent.mvi.action.ParentHomeAction
 import com.bancodopai.parent.mvi.effect.ParentHomeEffect
 import com.bancodopai.parent.mvi.state.ParentHomeState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -65,8 +67,19 @@ class ParentHomeViewModel(
             ParentHomeAction.DismissError -> updateState {
                 it.copy(errorMessage = null)
             }
+
+            is ParentHomeAction.InterestRateChanged -> updateState {
+                it.copy(interestRateInput = action.value)
+            }
+
+            ParentHomeAction.SaveInterestRate -> saveInterestRate()
+
+            ParentHomeAction.ApplyInterestNow -> applyInterestNow()
         }
     }
+
+    private var dueInterestJob: Job? = null
+    private var inviteRequested = false
 
     private fun observeHome() {
         repository.authState
@@ -123,9 +136,19 @@ class ParentHomeViewModel(
                         child = data.child,
                         transactions = data.transactions,
                         pendingWithdrawals = pending,
-                        errorMessage = null
+                        errorMessage = null,
+                        interestRateInput = if (it.interestRateInput.isBlank() &&
+                            (data.parent?.weeklyInterestRatePercent ?: 0.0) > 0.0
+                        ) {
+                            formatRate(data.parent?.weeklyInterestRatePercent ?: 0.0)
+                        } else {
+                            it.interestRateInput
+                        }
                     )
                 }
+
+                ensureInviteCode(data.parent)
+                applyDueInterest(data.parent, data.child)
             }
             .catch { error ->
                 updateState {
@@ -230,6 +253,100 @@ class ParentHomeViewModel(
             }
         }
     }
+
+    private fun saveInterestRate() {
+        val current = currentState
+        val parent = current.parent ?: return
+        val percent = current.interestRateInput
+            .replace(',', '.')
+            .trim()
+            .toDoubleOrNull()
+
+        if (percent == null || percent < 0.0 || percent > 100.0) {
+            viewModelScope.launch {
+                emitEffect(ParentHomeEffect.ShowMessage("Informe uma taxa entre 0 e 100."))
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            updateState { it.copy(isSavingInterestRate = true) }
+
+            repository.updateInterestRate(
+                parentId = parent.uid,
+                childId = current.child?.uid,
+                percentPerWeek = percent
+            )
+                .onSuccess {
+                    emitEffect(
+                        ParentHomeEffect.ShowMessage(
+                            "Taxa atualizada para ${formatRate(percent)}% por semana."
+                        )
+                    )
+                }
+                .onFailure { error ->
+                    emitEffect(ParentHomeEffect.ShowMessage(error.userMessage()))
+                }
+
+            updateState { it.copy(isSavingInterestRate = false) }
+        }
+    }
+
+    private fun applyInterestNow() {
+        val current = currentState
+        val parent = current.parent ?: return
+        val child = current.child ?: return
+        if (current.isApplyingInterest) return
+
+        viewModelScope.launch {
+            updateState { it.copy(isApplyingInterest = true) }
+
+            repository.applyInterestNow(parentId = parent.uid, childId = child.uid)
+                .onSuccess { transaction ->
+                    val message = if (transaction == null) {
+                        "Nada a creditar: saldo zerado ou taxa em zero."
+                    } else {
+                        "Rendimento de ${transaction.amountCents.toBrl()} aplicado."
+                    }
+                    emitEffect(ParentHomeEffect.ShowMessage(message))
+                }
+                .onFailure { error ->
+                    emitEffect(ParentHomeEffect.ShowMessage(error.userMessage()))
+                }
+
+            updateState { it.copy(isApplyingInterest = false) }
+        }
+    }
+
+    private fun ensureInviteCode(parent: User?) {
+        if (parent == null || parent.inviteCode != null || inviteRequested) return
+        inviteRequested = true
+        viewModelScope.launch {
+            repository.ensureInviteCode(parent.uid)
+        }
+    }
+
+    private fun applyDueInterest(parent: User?, child: User?) {
+        if (parent == null || child == null) return
+        if (parent.weeklyInterestRatePercent <= 0.0) return
+        if (dueInterestJob?.isActive == true) return
+
+        dueInterestJob = viewModelScope.launch {
+            repository.applyDueInterest(parentId = parent.uid, childId = child.uid)
+                .onSuccess { transaction ->
+                    if (transaction != null) {
+                        emitEffect(
+                            ParentHomeEffect.ShowMessage(
+                                "Rendimento semanal aplicado: ${transaction.amountCents.toBrl()}."
+                            )
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun formatRate(percent: Double): String =
+        percent.toString().removeSuffix(".0").replace('.', ',')
 
     private data class ParentData(
         val parent: User?,

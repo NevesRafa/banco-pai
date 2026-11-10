@@ -18,7 +18,10 @@ data class ParentHomeState(
     val depositNote: String = "",
     val depositError: String? = null,
     val isSubmittingDeposit: Boolean = false,
-    val processingTransactionId: String? = null
+    val processingTransactionId: String? = null,
+    val interestRateInput: String = "",
+    val isSavingInterestRate: Boolean = false,
+    val isApplyingInterest: Boolean = false
 ) {
     val childBalanceCents: Long
         get() = child?.balanceCents ?: 0L

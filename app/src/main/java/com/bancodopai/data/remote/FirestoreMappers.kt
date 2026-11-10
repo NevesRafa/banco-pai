@@ -24,7 +24,12 @@ internal fun DocumentSnapshot.toUser(): User? {
         balanceCents = longOrZero(FirestoreContract.BALANCE_CENTS),
         goalName = getString(FirestoreContract.GOAL_NAME).orEmpty(),
         goalTargetCents = longOrZero(FirestoreContract.GOAL_TARGET_CENTS),
-        parentId = getString(FirestoreContract.PARENT_ID)
+        parentId = getString(FirestoreContract.PARENT_ID),
+        weeklyInterestRatePercent = (get(FirestoreContract.WEEKLY_INTEREST_RATE) as? Number)
+            ?.toDouble() ?: 0.0,
+        lastInterestAppliedAt = getTimestamp(FirestoreContract.LAST_INTEREST_APPLIED_AT)
+            ?.toInstant(),
+        inviteCode = getString(FirestoreContract.INVITE_CODE)
     )
 }
 

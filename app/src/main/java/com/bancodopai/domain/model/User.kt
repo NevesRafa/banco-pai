@@ -1,5 +1,7 @@
 package com.bancodopai.domain.model
 
+import java.time.Instant
+
 enum class UserRole {
     PARENT,
     CHILD
@@ -13,7 +15,10 @@ data class User(
     val balanceCents: Long = 0L,
     val goalName: String = "",
     val goalTargetCents: Long = 0L,
-    val parentId: String? = null
+    val parentId: String? = null,
+    val weeklyInterestRatePercent: Double = 0.0,
+    val lastInterestAppliedAt: Instant? = null,
+    val inviteCode: String? = null
 ) {
     val goalProgress: Float
         get() = if (goalTargetCents <= 0L) {

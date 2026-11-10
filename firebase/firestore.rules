@@ -23,22 +23,62 @@ service cloud.firestore {
         && (request.auth.uid == userId
             || resource.data.parentId == request.auth.uid);
 
-      // Neste MVP as contas são criadas no Console/Admin SDK.
-      allow create, delete: if false;
+      // Cadastro no primeiro login (Google ou e-mail).
+      // Pai entra direto; filho precisa de um código de convite válido.
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && (
+          (request.resource.data.role == 'PARENT'
+            && request.resource.data.parentId == null)
+          ||
+          (request.resource.data.role == 'CHILD'
+            && request.resource.data.parentId is string
+            && request.resource.data.inviteCode is string
+            && get(/databases/$(database)/documents/invites/$(request.resource.data.inviteCode)).data.parentId
+                 == request.resource.data.parentId)
+        );
 
       allow update: if (
-        // Filho edita apenas nome e meta; nunca o próprio saldo.
+        // Pai edita o próprio perfil (nome, meta, taxa e convite).
         (request.auth.uid == userId
+          && resource.data.role == 'PARENT'
+          && request.resource.data.diff(resource.data)
+               .affectedKeys()
+               .hasOnly([
+                 'name', 'goalName', 'goalTargetCents',
+                 'weeklyInterestRatePercent', 'lastInterestAppliedAt',
+                 'inviteCode'
+               ]))
+        ||
+        // Filho edita apenas nome e meta; nunca saldo ou taxa.
+        (request.auth.uid == userId
+          && resource.data.role == 'CHILD'
           && request.resource.data.diff(resource.data)
                .affectedKeys()
                .hasOnly(['name', 'goalName', 'goalTargetCents']))
         ||
-        // Pai edita saldo e meta do filho.
+        // Pai edita saldo, meta e taxa do filho.
         (isParentOf(userId)
           && request.resource.data.diff(resource.data)
                .affectedKeys()
-               .hasOnly(['name', 'goalName', 'goalTargetCents', 'balanceCents']))
+               .hasOnly([
+                 'name', 'goalName', 'goalTargetCents',
+                 'balanceCents', 'weeklyInterestRatePercent'
+               ]))
       );
+
+      allow delete: if false;
+    }
+
+    // Códigos de convite ligam um filho novo ao pai.
+    // Leitura por ID (get) é liberada para permitir o cadastro.
+    match /invites/{code} {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && request.resource.data.parentId == request.auth.uid;
+      allow delete: if isSignedIn()
+        && resource.data.parentId == request.auth.uid;
     }
 
     match /transactions/{transactionId} {

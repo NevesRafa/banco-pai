@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -187,6 +189,25 @@ fun ParentHomeScreen(
                     }
 
                     item {
+                        InterestCard(
+                            state = state,
+                            onRateChanged = {
+                                viewModel.onAction(ParentHomeAction.InterestRateChanged(it))
+                            },
+                            onSave = {
+                                viewModel.onAction(ParentHomeAction.SaveInterestRate)
+                            },
+                            onApplyNow = {
+                                viewModel.onAction(ParentHomeAction.ApplyInterestNow)
+                            }
+                        )
+                    }
+
+                    item {
+                        InviteCodeCard(code = state.parent?.inviteCode)
+                    }
+
+                    item {
                         SectionHeader(
                             title = "Pendências",
                             count = state.pendingWithdrawals.size
@@ -238,6 +259,134 @@ fun ParentHomeScreen(
             DepositSheet(
                 state = state,
                 viewModel = viewModel
+            )
+        }
+    }
+}
+
+@Composable
+private fun InterestCard(
+    state: ParentHomeState,
+    onRateChanged: (String) -> Unit,
+    onSave: () -> Unit,
+    onApplyNow: () -> Unit
+) {
+    val hasChild = state.child != null
+    val rate = state.parent?.weeklyInterestRatePercent ?: 0.0
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Text(
+                text = "Rendimento semanal",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = if (rate > 0.0) {
+                    "Taxa atual: ${rate.toString().removeSuffix(".0").replace('.', ',')}% por semana. " +
+                        "Aplicado automaticamente quando você abre o app."
+                } else {
+                    "Defina uma taxa para o saldo do filho render toda semana."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = state.interestRateInput,
+                onValueChange = onRateChanged,
+                label = { Text("Taxa (% por semana)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = onSave,
+                    enabled = !state.isSavingInterestRate,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (state.isSavingInterestRate) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Salvar taxa")
+                    }
+                }
+
+                Button(
+                    onClick = onApplyNow,
+                    enabled = hasChild && rate > 0.0 && !state.isApplyingInterest,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (state.isApplyingInterest) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Aplicar agora")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InviteCodeCard(code: String?) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Text(
+                text = "Código para o filho",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                text = "O filho digita este código ao criar a conta com Google.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                text = code ?: "Gerando código…",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 4.sp,
+                color = MaterialTheme.colorScheme.primary
             )
         }
     }

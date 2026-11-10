@@ -1,8 +1,33 @@
+import groovy.json.JsonSlurper
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.gms.google-services")
+}
+
+// O cliente OAuth web é criado pelo console do Firebase quando o provedor
+// Google é habilitado. Lemos o google-services.json para não precisar
+// duplicar o ID no código.
+val googleWebClientId: String = run {
+    val file = file("google-services.json")
+    if (!file.exists()) {
+        ""
+    } else {
+        @Suppress("UNCHECKED_CAST")
+        val root = JsonSlurper().parse(file) as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val clients = root["client"] as? List<Map<String, Any?>>
+        clients.orEmpty()
+            .flatMap { client ->
+                @Suppress("UNCHECKED_CAST")
+                (client["oauth_client"] as? List<Map<String, Any?>>).orEmpty()
+            }
+            .firstOrNull { (it["client_type"] as? Number)?.toInt() == 3 }
+            ?.get("client_id") as? String
+            ?: ""
+    }
 }
 
 android {
@@ -20,6 +45,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     buildTypes {
@@ -98,6 +125,11 @@ dependencies {
     implementation(firebaseBom)
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+
+    // Login com Google (Credential Manager)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
