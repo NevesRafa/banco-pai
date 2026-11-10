@@ -1,0 +1,21 @@
+*.iml
+.gradle
+.kotlin
+/local.properties
+/.idea
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+*.apk
+*.aab
+
+# Configuração real do Firebase (cada dev/ambiente coloca a sua).
+# O arquivo de exemplo fica versionado.
+/app/google-services.json
+
+# Keystore e credenciais
+*.jks
+*.keystore
