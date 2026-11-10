@@ -39,8 +39,16 @@ class ParentHomeViewModel(
 
     override fun onAction(action: ParentHomeAction) {
         when (action) {
-            ParentHomeAction.OpenDepositSheet -> updateState {
-                it.copy(isDepositSheetOpen = true, depositError = null)
+            ParentHomeAction.OpenDepositSheet -> {
+                if (currentState.child == null) {
+                    viewModelScope.launch {
+                        emitEffect(ParentHomeEffect.ShowMessage(NO_CHILD_MESSAGE))
+                    }
+                } else {
+                    updateState {
+                        it.copy(isDepositSheetOpen = true, depositError = null)
+                    }
+                }
             }
 
             ParentHomeAction.CloseDepositSheet -> updateState {
@@ -429,6 +437,11 @@ class ParentHomeViewModel(
 
     private fun formatRate(percent: Double): String =
         percent.toString().removeSuffix(".0").replace('.', ',')
+
+    private companion object {
+        const val NO_CHILD_MESSAGE =
+            "Nenhum filho cadastrado ainda. Compartilhe o código da família com ele."
+    }
 
     private data class ParentData(
         val parent: User?,

@@ -502,8 +502,8 @@ private fun ParentSummaryCard(
                 )
                 Spacer(Modifier.size(6.dp))
                 Text(
-                    text = child?.name?.ifBlank { "Filho não vinculado" }
-                        ?: "Filho não vinculado",
+                    text = child?.name?.ifBlank { "Nenhum filho cadastrado" }
+                        ?: "Nenhum filho cadastrado ainda. Use o código da família abaixo.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
