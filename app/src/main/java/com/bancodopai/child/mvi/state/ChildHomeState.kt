@@ -15,7 +15,10 @@ data class ChildHomeState(
     val withdrawalAmount: String = "",
     val withdrawalReason: String = "",
     val withdrawalError: String? = null,
-    val isSubmittingWithdrawal: Boolean = false
+    val isSubmittingWithdrawal: Boolean = false,
+    val isGoalSheetOpen: Boolean = false,
+    val goalError: String? = null,
+    val isSavingGoal: Boolean = false
 ) {
     val balanceCents: Long
         get() = child?.balanceCents ?: 0L

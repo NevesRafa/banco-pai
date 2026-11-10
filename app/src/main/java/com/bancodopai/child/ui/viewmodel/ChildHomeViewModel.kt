@@ -56,6 +56,52 @@ class ChildHomeViewModel(
             ChildHomeAction.DismissError -> updateState {
                 it.copy(errorMessage = null)
             }
+
+            ChildHomeAction.OpenGoalSheet -> updateState {
+                it.copy(isGoalSheetOpen = true, goalError = null)
+            }
+
+            ChildHomeAction.CloseGoalSheet -> updateState {
+                it.copy(isGoalSheetOpen = false, goalError = null)
+            }
+
+            is ChildHomeAction.SubmitGoal -> submitGoal(action.name, action.target)
+        }
+    }
+
+    private fun submitGoal(name: String, targetText: String) {
+        val child = currentState.child ?: return
+
+        if (name.isBlank()) {
+            updateState { it.copy(goalError = "Dê um nome para a meta.") }
+            return
+        }
+
+        val targetCents = targetText.toCentsOrNull()
+        if (targetCents == null || targetCents <= 0L) {
+            updateState { it.copy(goalError = "Informe um valor maior que zero.") }
+            return
+        }
+
+        viewModelScope.launch {
+            updateState { it.copy(isSavingGoal = true, goalError = null) }
+
+            repository.updateGoal(
+                childId = child.uid,
+                goalName = name.trim(),
+                goalTargetCents = targetCents
+            )
+                .onSuccess {
+                    updateState {
+                        it.copy(isSavingGoal = false, isGoalSheetOpen = false)
+                    }
+                    emitEffect(ChildHomeEffect.ShowMessage("Meta atualizada."))
+                }
+                .onFailure { error ->
+                    updateState {
+                        it.copy(isSavingGoal = false, goalError = error.userMessage())
+                    }
+                }
         }
     }
 

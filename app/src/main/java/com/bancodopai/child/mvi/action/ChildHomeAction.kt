@@ -7,4 +7,7 @@ sealed interface ChildHomeAction {
     data class WithdrawalReasonChanged(val value: String) : ChildHomeAction
     data object SubmitWithdrawal : ChildHomeAction
     data object DismissError : ChildHomeAction
+    data object OpenGoalSheet : ChildHomeAction
+    data object CloseGoalSheet : ChildHomeAction
+    data class SubmitGoal(val name: String, val target: String) : ChildHomeAction
 }

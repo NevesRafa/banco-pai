@@ -48,6 +48,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -65,8 +66,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bancodopai.core.toBrl
 import com.bancodopai.core.toShortDateTime
+import com.bancodopai.core.ui.components.GoalSheet
 import com.bancodopai.core.ui.components.MoneyField
 import com.bancodopai.core.ui.components.TransactionRow
+import com.bancodopai.core.ui.components.toMoneyInput
 import com.bancodopai.core.ui.theme.CreditGreen
 import com.bancodopai.core.ui.theme.ParentTheme
 import com.bancodopai.core.ui.theme.PendingAmber
@@ -214,7 +217,10 @@ fun ParentHomeScreen(
                     item {
                         ParentSummaryCard(
                             child = state.child,
-                            balanceCents = state.childBalanceCents
+                            balanceCents = state.childBalanceCents,
+                            onEditGoal = {
+                                viewModel.onAction(ParentHomeAction.OpenGoalSheet)
+                            }
                         )
                     }
 
@@ -291,6 +297,21 @@ fun ParentHomeScreen(
             DepositSheet(
                 state = state,
                 viewModel = viewModel
+            )
+        }
+
+        if (state.isGoalSheetOpen) {
+            GoalSheet(
+                initialName = state.child?.goalName.orEmpty(),
+                initialTarget = (state.child?.goalTargetCents ?: 0L).toMoneyInput(),
+                isSaving = state.isSavingGoal,
+                error = state.goalError,
+                onSave = { name, target ->
+                    viewModel.onAction(ParentHomeAction.SubmitGoal(name, target))
+                },
+                onDismiss = {
+                    viewModel.onAction(ParentHomeAction.CloseGoalSheet)
+                }
             )
         }
     }
@@ -444,7 +465,8 @@ private fun ParentGreeting(parent: User?) {
 @Composable
 private fun ParentSummaryCard(
     child: User?,
-    balanceCents: Long
+    balanceCents: Long,
+    onEditGoal: () -> Unit
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
@@ -485,6 +507,13 @@ private fun ParentSummaryCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+
+            if (child != null) {
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onEditGoal) {
+                    Text(if (child.hasGoal) "Editar meta" else "Definir meta")
+                }
             }
 
             if (child != null && child.hasGoal) {

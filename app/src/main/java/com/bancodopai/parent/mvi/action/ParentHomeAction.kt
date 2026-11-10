@@ -15,5 +15,8 @@ sealed interface ParentHomeAction {
     data object SaveInterestRate : ParentHomeAction
     data object ApplyInterestNow : ParentHomeAction
     data class SelectChild(val childId: String) : ParentHomeAction
+    data object OpenGoalSheet : ParentHomeAction
+    data object CloseGoalSheet : ParentHomeAction
+    data class SubmitGoal(val name: String, val target: String) : ParentHomeAction
     data object DismissError : ParentHomeAction
 }

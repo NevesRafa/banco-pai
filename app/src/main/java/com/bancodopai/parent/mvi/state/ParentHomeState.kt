@@ -23,7 +23,10 @@ data class ParentHomeState(
     val processingTransactionId: String? = null,
     val interestRateInput: String = "",
     val isSavingInterestRate: Boolean = false,
-    val isApplyingInterest: Boolean = false
+    val isApplyingInterest: Boolean = false,
+    val isGoalSheetOpen: Boolean = false,
+    val goalError: String? = null,
+    val isSavingGoal: Boolean = false
 ) {
     /** Filho em foco: o selecionado ou, na falta dele, o primeiro. */
     val child: User?
